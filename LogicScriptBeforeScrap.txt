@@ -1,0 +1,369 @@
+using Mono.Cecil.Cil;
+using System;
+using System.Buffers.Text;
+using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
+using TMPro;
+using UnityEngine;
+using UnityEngine.UI;
+
+public class LogicScript : MonoBehaviour
+{
+    
+   
+    public TextMeshProUGUI playerText;
+    public TextMeshProUGUI playerHealthDisplay;
+    public TextMeshProUGUI AIText;
+    public TextMeshProUGUI AIHealthDisplay;
+    public string playerState;
+    public Characters playerCharacter;
+    public Characters AICharacter;
+    public GameObject playerBar;
+    public GameObject AIBar;
+    public MoveSets playerMove;
+    public MoveSets AIMove;
+
+
+    private float playerTime;
+    private float AITime;
+    private double AIHealth;
+    private double playerHealth;
+    private readonly List<GameObject> PlayerKeys = new();
+    private readonly List<GameObject> AIKeys = new();
+    public void PlayerRound(string action, GameObject key, string keyPress)
+    { 
+        
+
+
+        //key if pressed right time
+        if (action != "Miss" && action != "Inactivated")
+        {
+
+            //Get the moves
+            MoveSets tempMove1 = playerCharacter.Move1;
+            MoveSets tempMove2 = playerCharacter.Move2;
+            MoveSets tempMove3 = playerCharacter.Move3;
+            MoveSets tempMove4 = playerCharacter.Move4;
+
+            string tempPress1 = tempMove1.Press;
+            string tempPress2 = tempMove2.Press;
+            string tempPress3 = tempMove3.Press;
+            string tempPress4 = tempMove4.Press;
+
+            MoveSets currentMove;
+
+            //get what move is being done
+            if (keyPress == tempPress1)
+            {
+                currentMove = tempMove1;
+            }
+            else if (keyPress == tempPress2)
+            {
+                currentMove = tempMove2;
+            }
+            else if (keyPress == tempPress3)
+            {
+                currentMove = tempMove3;
+            }
+            else if (keyPress == tempPress4)
+            {
+                currentMove = tempMove4;
+            }
+            else
+            {
+                //if doesn't fit
+                return;
+            }
+
+            //assign a global playerMove so AI round can have knowledge what move player did
+            playerMove = currentMove;
+            //set the current time attack to zero if the current effects of effects right now is still happening
+            playerTime = 0;
+
+            //Get all the stats from the move
+
+            int damage = playerMove.Damage;
+            double damageChance = playerMove.DamageChance / 100.00;
+            int block = 0;
+            double blockChance = 0.0;
+            //calculate block
+            if (AIMove != null)
+            {
+                blockChance = AIMove.BlockChance / 100.00;
+                block = AIMove.Block;
+            }
+
+            DamageCalc(damage, damageChance, block, blockChance, AIHealthDisplay, ref AIHealth);
+
+            //Get the text and show
+            string playerTextString = currentMove.Text;
+            playerText.text = playerTextString;
+            //delete keys
+            ArrayKeys(false, key, "player");
+            Destroy(key);
+        }
+        else 
+        {
+            playerText.text = action;
+        }
+    }
+
+    //get from Keyspawner the list of keys to keep track
+    public void ArrayKeys(bool isAdd, GameObject key, string type)
+    {
+        if (type == "player")
+        {
+            if (isAdd == true)
+            {
+
+                PlayerKeys.Add(key);
+            }
+            else
+            {
+                PlayerKeys.RemoveAt(0);
+
+            }
+        }
+        else if (type == "AI")
+        {
+            if (isAdd == true)
+            {
+
+                AIKeys.Add(key);
+            }
+            else
+            {
+                AIKeys.RemoveAt(0);
+
+            }
+        }
+    
+    }
+
+    //see how long player attack's effects will last. 
+    //Will have to change in future. Can only hold one attack. Future, will need to put this in attack objects created
+    public void PlayerAttackDuration()
+    {
+        if (playerMove != null)
+        {
+            if (playerTime < playerMove.Time)
+            {
+                playerTime += Time.deltaTime;
+            }
+            else 
+            {
+                playerTime = 0;
+                playerMove = null;
+            }
+        
+        }
+    }
+    
+    public void AIAttackDuration()
+    {
+        if (AIMove != null)
+        {
+            if (AITime < AIMove.Time)
+            {
+                AITime += Time.deltaTime;
+            }
+            else
+            {
+                AITime = 0;
+                AIMove = null;
+            }
+
+        }
+    }
+
+    //When player clicks on a key
+    public void PlayerAttack()
+    {
+        //for when player presses a key
+        if (PlayerKeys.Count > 0 && Input.anyKeyDown)
+        {
+            //get the dimension of the key that is closest to bottom and type of key press
+            string keypress = Input.inputString;
+            GameObject lowestKey = PlayerKeys.First();
+
+            //check if not inactivated
+            if (lowestKey.CompareTag("ActivatedKey"))
+            {
+                //get the char bar dimensions
+                SpriteRenderer barSr;
+                SpriteRenderer keySr = lowestKey.GetComponent<SpriteRenderer>();
+                barSr = playerBar.GetComponent<SpriteRenderer>();
+
+                //wtf
+                var charHeight = (keySr.sprite.bounds.extents.y * 2) * lowestKey.transform.localScale.y;
+
+                var barHeight = (barSr.sprite.bounds.extents.y * 2) * playerBar.transform.localScale.y;
+
+                //if the key is at right place when clicking
+                if ((lowestKey.transform.position.y - charHeight / 2) < (playerBar.transform.position.y - barHeight / 2))
+                {
+
+                    PlayerRound("Punch", lowestKey, keypress);
+
+
+                }
+                //if key is not at right place when clicking
+                else
+                {
+                    PlayerRound("Miss", lowestKey, keypress);
+                    lowestKey.tag = "Untagged";
+
+                    Renderer keyRenderer = lowestKey.GetComponent<Renderer>();
+
+                    Material originalMaterial = keyRenderer.sharedMaterial; // Get the original material from the prefab
+                    Material instanceMaterial = new Material(originalMaterial); // Create a new material instance
+
+                    instanceMaterial.color = Color.red; // Set the desired color
+
+                    keyRenderer.material = instanceMaterial; // Assign the new material to the renderer of the prefab instance
+
+                }
+            }
+            else
+            {
+
+                PlayerRound("Inactivated", lowestKey, keypress);
+            }
+
+        }
+
+    }
+
+    public void EnemyAttack()
+    {
+        GameObject lowestKey = AIKeys.First();
+
+        //check if not inactivated
+        if (lowestKey.CompareTag("ActivatedKey"))
+        {
+            //get the char bar dimensions
+            SpriteRenderer barSr = AIBar.GetComponent<SpriteRenderer>();
+            SpriteRenderer keySr = lowestKey.GetComponent<SpriteRenderer>();
+
+            //wtf
+            var charHeight = (keySr.sprite.bounds.extents.y * 2) * lowestKey.transform.localScale.y;
+
+            var barHeight = (barSr.sprite.bounds.extents.y * 2) * playerBar.transform.localScale.y;
+
+            //if the key is at right place when clicking
+            if ((lowestKey.transform.position.y - charHeight / 2) < (AIBar.transform.position.y - barHeight / 2))
+            {
+                double AIChance = AICharacter.AICorrectPress / 100.00;
+                double randomValue = UnityEngine.Random.value;
+               
+                if(randomValue <= AIChance) 
+                {
+                    EnemyRound(lowestKey);
+                    
+                }
+                //Inactivate key 
+                lowestKey.tag = "Untagged";
+
+            }
+        }
+    }
+
+    public void EnemyRound(GameObject key) 
+    {
+        //get random move
+        //placeholder for now
+        int randomMove = UnityEngine.Random.Range(1, 5);
+
+        switch (randomMove) 
+        {
+            case 1:
+                {
+                    AIMove = AICharacter.Move1;
+                    break;
+                }
+            case 2:
+                {
+                    AIMove = AICharacter.Move2;
+                    break;
+                }
+            case 3:
+                {
+                    AIMove = AICharacter.Move3;
+                    break;
+                }
+            case 4:
+                {
+                    AIMove = AICharacter.Move4;
+                    break;
+                }
+
+        }
+
+        //set the current time attack to zero if the current effects of effects right now is still happening
+        AITime = 0;
+
+        //Get all the stats from the move
+
+        int damage = AIMove.Damage;
+        double damageChance = AIMove.DamageChance / 100.00;
+        int block = 0;
+        double blockChance = 0.0;
+        //calculate block
+        if(playerMove != null) 
+        {
+            blockChance = playerMove.BlockChance / 100.00;
+            block = playerMove.Block;
+        }
+
+        DamageCalc(damage, damageChance, block, blockChance, playerHealthDisplay, ref playerHealth);
+
+
+        //Get the text and show
+        string AITextString = AIMove.Text;
+        AIText.text = AITextString;
+        //delete keys
+        ArrayKeys(false, key, "AI");
+        Destroy(key);
+    }
+
+    private void DamageCalc(int damage, double damageChance, int block, double blockChance, TextMeshProUGUI HealthDisplay, ref double Health)
+    {
+        double randomValue = UnityEngine.Random.value;
+        if (randomValue <= blockChance)
+        {
+            damage -= block;
+        }
+
+        if (damage < 0) { damage = 0; }
+
+        randomValue= UnityEngine.Random.value;
+        if (randomValue <= damageChance)
+        {
+            Health -= damage;
+        }
+        HealthDisplay.text = Health.ToString();
+
+    }
+
+ 
+
+
+    private void Update()
+    {
+        PlayerAttackDuration();
+        AIAttackDuration();
+        PlayerAttack();
+        EnemyAttack();
+      
+
+
+        
+    }
+
+    private void Start()
+    {
+        AIHealth = AICharacter.Health;
+        playerHealth = playerCharacter.Health;
+    }
+}
